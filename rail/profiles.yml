@@ -1,0 +1,10 @@
+rail:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Local DuckDB file at the repo root, shared with scripts/ingest.py.
+      path: "../warehouse.duckdb"
+      threads: 4
+      extensions:
+        - json

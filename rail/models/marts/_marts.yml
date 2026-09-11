@@ -1,0 +1,169 @@
+version: 2
+
+models:
+
+  # ---------------------------------------------------------------- dimensions
+  - name: dim_station
+    description: "One row per station, plus an unknown member (station_key = -1)."
+    columns:
+      - name: station_key
+        description: "Surrogate. -1 is the unknown member."
+        data_tests:
+          - unique
+          - not_null
+      - name: station_short_code
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_date
+    description: "One row per calendar date in the loaded range (train departure_date)."
+    columns:
+      - name: date_key
+        description: "YYYYMMDD integer."
+        data_tests:
+          - unique
+          - not_null
+      - name: date
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_train_type
+    description: "One row per observed (train_type, train_category) combination."
+    columns:
+      - name: train_type_key
+        data_tests:
+          - unique
+          - not_null
+
+  - name: dim_cause
+    description: "One row per delay cause category code, plus unknown member (cause_key = -1)."
+    columns:
+      - name: cause_key
+        data_tests:
+          - unique
+          - not_null
+      - name: cause_category_code
+        data_tests:
+          - unique
+          - not_null
+
+  # --------------------------------------------------------------------- facts
+  - name: fct_timetable_events
+    description: >
+      GRAIN: one row per train per station per event type (ARRIVAL or DEPARTURE).
+      A booked stop is two rows; an origin/terminus one; a non-stopping pass-by
+      one (is_stopping = false). Nothing is filtered out of this table.
+    columns:
+      - name: event_key
+        data_tests:
+          - unique
+          - not_null
+      - name: station_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_station')
+                field: station_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: train_type_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_train_type')
+                field: train_type_key
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['ARRIVAL', 'DEPARTURE']
+      - name: delay_minutes
+        description: >
+          differenceInMinutes: actual minus scheduled, in minutes, at this event.
+          ADDITIVITY: non-additive. It must not be summed across the arrival and
+          departure rows of the same train, nor across the stops of a route
+          (delay at stop N already contains the delay carried from stop N-1).
+          Valid aggregations are averages and percentiles over a set of
+          comparable events (e.g. all ARRIVAL events at one station).
+      - name: cause_count
+        description: >
+          Number of delay-cause rows attached to this event (0..N).
+          ADDITIVITY: fully additive across events.
+      - name: is_cancelled
+        description: "True if the train or this row is cancelled. Semi-additive (count, don't sum with other flags)."
+      - name: has_actual_time
+        description: "True if actual_time is present. Used to scope delay aggregates."
+      - name: is_plausible_delay
+        description: >
+          delay_minutes is null or within [min_plausible_delay_minutes,
+          max_plausible_delay_minutes]. Non-additive flag.
+      - name: is_stopping
+        description: "trainStopping. Non-additive flag."
+      - name: is_commercial_stop
+        description: "commercialStop: a booked, public stop. Non-additive flag."
+
+  - name: fct_delay_causes
+    description: >
+      GRAIN: one row per timetable event per delay cause. Separate table because
+      the grain differs from fct_timetable_events; see the header comment in the
+      model for why it is not a column on the event fact.
+    columns:
+      - name: event_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_timetable_events')
+                field: event_key
+      - name: cause_category_code
+        description: "Coarse cause code (A, E, L, T, ...)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_cause')
+                field: cause_category_code
+      - name: cause_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_cause')
+                field: cause_key
+
+  # ---------------------------------------------------------------- aggregate
+  - name: agg_station_punctuality
+    description: >
+      GRAIN: one row per station per calendar date. On-time = arrival delay < 5
+      minutes at a commercial stop, over arrivals that happened with a plausible
+      delay. Cancellations excluded from the rate, reported as cancelled_arrivals.
+    columns:
+      - name: station_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_station')
+                field: station_key
+      - name: scheduled_arrivals
+        description: "ADDITIVITY: fully additive across stations and dates."
+      - name: measured_arrivals
+        description: "Arrivals counting toward the rate. Fully additive."
+      - name: on_time_events
+        description: "Fully additive. Rebuild a pooled rate as sum(on_time_events)/sum(measured_arrivals)."
+      - name: on_time_rate
+        description: "NON-additive ratio. Do not average across rows; recompute from the counts."
+      - name: avg_delay_minutes
+        description: "NON-additive. Recompute from underlying events when pooling."
+      - name: median_delay_minutes
+        description: "NON-additive."
+      - name: worst_delay_minutes
+        description: "Semi-additive: max() re-aggregates, sum() does not."

@@ -1,0 +1,14 @@
+.venv/
+data/raw/
+*.duckdb
+*.duckdb.wal
+target/
+dbt_packages/
+logs/
+__pycache__/
+.dbt/
+.user.yml
+data/*.duckdb
+chat.txt
+claude.md
+.claude/

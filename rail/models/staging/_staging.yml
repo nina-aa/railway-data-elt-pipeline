@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: stg_timetable_events
+    description: >
+      One row per train per station per event type (ARRIVAL / DEPARTURE), the
+      flatten of train -> timeTableRows. Nothing filtered; cancelled / pass-by /
+      no-actual-time rows are kept and flagged.
+    columns:
+      - name: event_key
+        description: >
+          md5 of (departure_date, train_number, station_short_code, event_type,
+          scheduled_time). Uniqueness is asserted here before anything downstream
+          relies on it.
+        data_tests:
+          - unique
+          - not_null
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['ARRIVAL', 'DEPARTURE']
+      - name: departure_date
+        data_tests:
+          - not_null
+      - name: station_short_code
+        data_tests:
+          - not_null
+
+  - name: stg_delay_causes
+    description: >
+      One row per timetable event per delay cause (timeTableRows -> causes).
+      Separate grain from stg_timetable_events; joining it back onto the event
+      grain without aggregating multiplies delay minutes.
+    columns:
+      - name: event_key
+        data_tests:
+          - not_null
+      - name: cause_category_code
+        data_tests:
+          - not_null
+      - name: cause_seq
+        data_tests:
+          - not_null
+
+  - name: stg_stations
+    columns:
+      - name: station_short_code
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_cause_codes
+    columns:
+      - name: cause_category_code
+        data_tests:
+          - unique
+          - not_null
+
+  - name: stg_cause_codes_detailed
+    columns:
+      - name: detailed_cause_category_code
+        data_tests:
+          - unique
+          - not_null

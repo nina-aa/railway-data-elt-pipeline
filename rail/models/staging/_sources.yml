@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Raw JSON landed by scripts/ingest.py, read in place from disk by DuckDB
+      via read_json_auto. Nothing here is cleaned or reshaped. Paths are relative
+      to the dbt project directory (rail/), which is DuckDB's working directory
+      during a run. Types are inferred by DuckDB and cast explicitly in staging.
+    schema: main
+    tables:
+      - name: trains
+        description: "One row per train per loaded date; nested timeTableRows unnested in staging. The date= partition is exposed as the `filename` column."
+        meta:
+          external_location: "read_json_auto('../data/raw/trains/date=*/trains.json.gz', format = 'array', filename = true, maximum_object_size = 16777216)"
+      - name: stations
+        description: "Station metadata from /api/v1/metadata/stations."
+        meta:
+          external_location: "read_json_auto('../data/raw/metadata/stations.json', format = 'array')"
+      - name: cause_codes
+        description: "Cause category codes from /api/v1/metadata/cause-category-codes."
+        meta:
+          external_location: "read_json_auto('../data/raw/metadata/cause_codes.json', format = 'array')"
+      - name: detailed_cause_codes
+        description: "Detailed cause category codes from /api/v1/metadata/detailed-cause-category-codes."
+        meta:
+          external_location: "read_json_auto('../data/raw/metadata/detailed_cause_codes.json', format = 'array')"

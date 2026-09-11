@@ -1,0 +1,44 @@
+name: 'rail'
+version: '1.0.0'
+config-version: 2
+
+profile: 'rail'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # NOTE: dim_date's range is derived from min/max(departure_date) in the data
+  # itself (see models/marts/dim_date.sql), not from a var here. An earlier
+  # version hardcoded the range; it silently produced NULL date_key on every
+  # fact row for any date ingested after the range was last bumped -- caught
+  # when the first catch-up run past the initial backfill broke it for real.
+  # On-time threshold in minutes (arrival delay strictly less than this is "on time").
+  # Justified in the README.
+  on_time_threshold_minutes: 5
+  # Early-departure tolerance for the singular test. Set from the data: even at
+  # commercial stops p01 of the delay is about -20 min (freight runs ahead when a
+  # path opens), so 5 min flagged normal operations. 60 min targets only gross
+  # artifacts (schedule-version drift, bad actualTime) — see docs/data_profile.md.
+  early_departure_tolerance_minutes: 60
+  # Plausible delay band in minutes. Outside this, is_plausible_delay = false and
+  # the row is excluded from delay aggregates. Lower bound keeps ordinary early
+  # running in; below it the values are data errors (down to -286 observed).
+  # Upper bound is ~24h; 0 rows breach it.
+  min_plausible_delay_minutes: -60
+  max_plausible_delay_minutes: 1440
+
+models:
+  rail:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
